@@ -9,6 +9,13 @@
 
     <title>Nexus AI</title>
 
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700&display=swap"
+        rel="stylesheet">
+
     <!-- Styles -->
     <link rel="stylesheet" href="./style.css">
 
@@ -18,38 +25,49 @@
 
 <body>
 
-    <div class="background-glow"></div>
+    <div class="background-glow-1"></div>
+    <div class="background-glow-2"></div>
 
-    <div class="chat-container">
+    <main class="app-container">
+        <div class="chat-interface">
 
-        <!-- Header -->
-        <div class="header">
-            <div class="header-info">
-                <h2>Nexus AI</h2>
-                <div class="status-badge">
-                    <span class="status-dot"></span>
-                    Online
+            <!-- Header -->
+            <header class="chat-header">
+                <div class="header-content">
+                    <div class="logo-area">
+                        <h1>Nexus AI</h1>
+                        <div class="status-badge">
+                            <span class="status-pulse"></span>
+                            Online
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Chat messages -->
+            <div id="chat" class="chat-viewport">
+                <div class="welcome-message">
+                    <h3>Welcome to Nexus AI</h3>
+                    <p>I can help you with loan inquiries, credit analysis, and KYC verification.</p>
                 </div>
             </div>
+
+            <!-- Input area -->
+            <div class="input-wrapper">
+                <div class="input-container">
+                    <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off" />
+                    <button id="send-btn" aria-label="Send Message">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
         </div>
-
-        <!-- Chat messages -->
-        <div id="chat" class="chat-box"></div>
-
-        <!-- Input area -->
-        <div class="input-area">
-            <input type="text" id="messageInput" placeholder="Ask about loans..." autocomplete="off" />
-
-            <!-- Send Button -->
-            <button id="send-btn" aria-label="Send">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M22 2L11 13" />
-                    <path d="M22 2L15 22L11 13L2 9L22 2Z" />
-                </svg>
-            </button>
-        </div>
-
-    </div>
+    </main>
 
     <!-- Script -->
     <script src="./script.js"></script>
