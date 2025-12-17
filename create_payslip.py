@@ -63,7 +63,10 @@ draw.text((50, y_pos), "NET SALARY:", fill='black', font=font_large)
 draw.text((400, y_pos), "Rs. 65,000", fill='black', font=font_large)
 
 # Save image
-output_path = r"C:\Ritika\AI-Conversational-Loan-Agent\frontend\sample_payslip.png"
+from pathlib import Path
+output_dir = Path(__file__).parent / "frontend"
+output_dir.mkdir(exist_ok=True)
+output_path = output_dir / "sample_payslip.png"
 img.save(output_path)
 print(f"Sample payslip created at: {output_path}")
 print("You can upload this file to test the OCR!")

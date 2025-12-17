@@ -17,10 +17,18 @@ try:
         pytesseract.pytesseract.tesseract_cmd = tesseract_path
         print(f"✅ Tesseract-OCR configured from env: {tesseract_path}")
     elif os.name == 'nt':  # Windows
-        default_path = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-        if os.path.exists(default_path):
-            pytesseract.pytesseract.tesseract_cmd = default_path
-            print("✅ Tesseract-OCR configured from default Windows path")
+        # Check common Windows install paths
+        common_paths = [
+            r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        ]
+        for path in common_paths:
+            if os.path.exists(path):
+                pytesseract.pytesseract.tesseract_cmd = path
+                print(f"✅ Tesseract-OCR found at: {path}")
+                break
+        else:
+            print("⚠️ Tesseract-OCR not found in common Windows paths. Using system PATH.")
     else:
         print("✅ Tesseract-OCR will use system PATH (Linux/Docker)")
 except ImportError:
@@ -31,10 +39,18 @@ except Exception as e:
 # Configure Poppler path for pdf2image (optional, system PATH can be used)
 POPPLER_PATH = os.getenv('POPPLER_PATH', None)
 if POPPLER_PATH is None and os.name == 'nt':  # Windows
-    default_poppler = r'C:\Users\Ritika\poppler\poppler-24.08.0\Library\bin'
-    if os.path.exists(default_poppler):
-        POPPLER_PATH = default_poppler
-        print(f"✅ Poppler-utils configured from default Windows path")
+    # Check common Windows install paths
+    common_poppler_paths = [
+        os.path.expandvars(r'%USERPROFILE%\poppler\Library\bin'),
+        os.path.expandvars(r'%USERPROFILE%\AppData\Local\poppler\Library\bin'),
+    ]
+    for path in common_poppler_paths:
+        if os.path.exists(path):
+            POPPLER_PATH = path
+            print(f"✅ Poppler-utils found at: {path}")
+            break
+    if POPPLER_PATH is None:
+        print("⚠️ Poppler-utils not found. PDF processing may fail on image-based PDFs.")
 
 # --- App setup ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

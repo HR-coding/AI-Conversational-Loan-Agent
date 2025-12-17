@@ -30,12 +30,23 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # Load environment
-env_path = Path("C:/Ritika/AI-Conversational-Loan-Agent/backend/.env")
-if env_path.exists():
-    load_dotenv(dotenv_path=env_path)
-    logger.info(f"OPENAI_API_KEY loaded successfully")
-else:
-    logger.error(f"CRITICAL: .env file NOT found at: {env_path}")
+# Try multiple locations (development and production)
+env_locations = [
+    Path(__file__).parent.parent.parent.parent / "backend" / ".env",  # From agents/
+    Path.cwd() / ".env",  # From current working directory
+    Path.cwd() / "backend" / ".env",  # From root
+]
+
+env_loaded = False
+for env_path in env_locations:
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+        logger.info(f"OPENAI_API_KEY loaded from: {env_path}")
+        env_loaded = True
+        break
+
+if not env_loaded:
+    logger.warning(f"No .env file found in standard locations. Using environment variables.")
 
 # Initialize LLM
 llm = ChatOpenAI(
@@ -101,6 +112,29 @@ def extract_pan(text: str) -> Optional[str]:
     match = re.search(r'\b([A-Z]{5}[0-9]{4}[A-Z])\b', text.upper())
     return match.group(1) if match else None
 
+def extract_tenure(text: str) -> Optional[int]:
+    """Extract loan tenure in months from text"""
+    text = text.lower()
+    
+    # Try to extract months first
+    months_match = re.search(r'(\d+)\s*(?:month|months)', text)
+    if months_match:
+        months = int(months_match.group(1))
+        if 12 <= months <= 60:
+            return months
+        return None
+    
+    # Try to extract years and convert to months
+    years_match = re.search(r'(\d+)\s*(?:year|years)', text)
+    if years_match:
+        years = int(years_match.group(1))
+        months = years * 12
+        if 12 <= months <= 60:
+            return months
+        return None
+    
+    return None
+
 def validate_pan(pan: str) -> dict:
     """Validate PAN format"""
     if not pan or len(pan) != 10:
@@ -163,6 +197,12 @@ To proceed with your loan application, I'll need your PAN number for KYC verific
 - Calculate: salary × 24 months vs 2 × loan amount
 - Tell user if they meet the requirement
 - Explain what they're eligible for
+
+**TENURE VALIDATION (CRITICAL):**
+- Valid tenure range: 12-60 months (1-5 years)
+- If user says "100 years" or "1 month" → REJECT and ask for valid tenure
+- Example: "I see you mentioned 100 years. However, loan tenures must be between 12-60 months (1-5 years). Could you please specify your preferred tenure?"
+- Only accept values between 12 and 60 months
 
 **STAGE 3 - KYC Verification:**
 - Ask for PAN after acknowledging salary
@@ -233,6 +273,18 @@ def agent_node(state: AgentState):
         if salary:
             updates["monthly_salary"] = salary
             logger.info(f"Extracted monthly salary: ₹{salary:,}")
+    
+    # Extract tenure (12-60 months only)
+    if not state.get("requested_tenure"):
+        tenure = extract_tenure(last_user_msg)
+        if tenure:
+            updates["requested_tenure"] = f"{tenure} months"
+            logger.info(f"Extracted tenure: {tenure} months")
+        elif "month" in last_user_msg.lower() or "year" in last_user_msg.lower():
+            # User mentioned tenure but it's invalid (too short/long)
+            logger.warning(f"Invalid tenure mentioned: {last_user_msg}")
+            # Agent will be instructed to reject this
+            updates["tenure_invalid"] = True
     
     # Extract PAN
     if not state.get("pan_number"):

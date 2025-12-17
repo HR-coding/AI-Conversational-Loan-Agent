@@ -1,8 +1,12 @@
 import sqlite3
 import os
 from flask import Flask, request, jsonify
+
 app = Flask(__name__)
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'mock_bank.db')
+
+# Get database path - works from any directory
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), 'mock_bank.db')
 
 @app.route('/get-score', methods=['POST'])
 def get_score():

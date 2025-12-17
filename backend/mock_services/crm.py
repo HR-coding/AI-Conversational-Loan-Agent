@@ -3,8 +3,10 @@ from flask import Flask, request, jsonify
 import os
 
 app = Flask(__name__)
-# Path to the shared DB (assuming you run this from backend/ root)
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'mock_bank.db')
+
+# Get database path - works from any directory
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), 'mock_bank.db')
 
 def get_user(pan):
     if not os.path.exists(DB_PATH): return None

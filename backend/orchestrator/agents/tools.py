@@ -114,14 +114,12 @@ def verification_agent_tool(pan: str):
             {"pan": pan.upper()}
         )
         
-        logger.info(f"KYC verification result: {result.get('verified', False)}")
+        logger.info(f"KYC verification result: {result.get('status', 'failed')}")
         return {
-            "verified": result.get("verified", False),
+            "verified": result.get("status") == "verified",
+            "message": "KYC verification complete",
             "name": result.get("name", ""),
-            "pan": pan.upper(),
-            "phone": result.get("phone", ""),
-            "address": result.get("address", ""),
-            "message": result.get("message", "Verification complete")
+            "pan": pan.upper()
         }
         
     except requests.Timeout:
@@ -166,7 +164,7 @@ def underwriting_agent_tool(pan: str, amount: int, monthly_salary: int = 0):
     logger.info(f"Underwriting evaluation: PAN={pan[:4]}****, Amount={amount}, Salary={monthly_salary}")
     
     try:
-        # Fetch credit score
+        # Fetch credit score (REQUIRED)
         try:
             credit_response = call_api_with_retry(f"{CREDIT_URL}/get-score", {"pan": pan})
             credit_score = credit_response.get("credit_score", 0)
@@ -177,18 +175,15 @@ def underwriting_agent_tool(pan: str, amount: int, monthly_salary: int = 0):
                 "error": "Unable to fetch credit score. Please try again later."
             }
         
-        # Fetch pre-approved limit
+        # Fetch pre-approved limit (OPTIONAL - if fails, use salary-based approval)
+        pre_approved_limit = None
         try:
             offer_response = call_api_with_retry(f"{OFFER_URL}/get-limit", {"pan": pan})
             pre_approved_limit = offer_response.get("pre_approved_limit", 0)
+            logger.info(f"Credit Score: {credit_score}, Pre-approved Limit: {pre_approved_limit}")
         except Exception as e:
-            logger.error(f"Offer service error: {str(e)}")
-            return {
-                "status": "ERROR",
-                "error": "Unable to fetch pre-approved limit. Please try again later."
-            }
-        
-        logger.info(f"Credit Score: {credit_score}, Pre-approved Limit: {pre_approved_limit}")
+            logger.warning(f"Offer service error (non-fatal): {str(e)}")
+            logger.info(f"Credit Score: {credit_score}, Pre-approved Limit: Not available (will use salary-based approval)")
         
         # Rule 1: Credit score must be >= 700
         if credit_score < 700:
@@ -199,85 +194,89 @@ def underwriting_agent_tool(pan: str, amount: int, monthly_salary: int = 0):
                 "suggestion": "Please improve your credit score and reapply after 3 months"
             }
         
-        # Rule 2: Amount within pre-approved limit - instant approval
-        if amount <= pre_approved_limit:
-            return {
-                "status": "APPROVED",
-                "amount": amount,
-                "interest_rate": 10.5,
-                "credit_score": credit_score,
-                "pre_approved_limit": pre_approved_limit,
-                "reason": "Amount within pre-approved limit"
-            }
-        
-        # Rule 3: Amount between 1x and 2x pre-approved limit
-        if amount <= (2 * pre_approved_limit):
-            # Need salary information
+        # If pre-approved limit available, use it for initial checks
+        if pre_approved_limit:
+            # Rule 2: Amount within pre-approved limit - instant approval
+            if amount <= pre_approved_limit:
+                return {
+                    "status": "APPROVED",
+                    "amount": amount,
+                    "interest_rate": 10.5,
+                    "credit_score": credit_score,
+                    "pre_approved_limit": pre_approved_limit,
+                    "reason": "Amount within pre-approved limit"
+                }
+            
+            # Rule 3: Amount between 1x and 2x pre-approved limit
+            if amount <= (2 * pre_approved_limit):
+                # Need salary information
+                if monthly_salary == 0:
+                    return {
+                        "status": "NEED_SALARY",
+                        "message": "Please provide your monthly salary to proceed with evaluation",
+                        "amount": amount,
+                        "credit_score": credit_score,
+                        "pre_approved_limit": pre_approved_limit
+                    }
+        else:
+            # Pre-approved limit not available - if no salary provided, ask for it
             if monthly_salary == 0:
                 return {
                     "status": "NEED_SALARY",
                     "message": "Please provide your monthly salary to proceed with evaluation",
                     "amount": amount,
-                    "credit_score": credit_score,
-                    "pre_approved_limit": pre_approved_limit
-                }
-            
-            # USER REQUIREMENT: Salary during loan duration should be at least 2x the loan amount
-            # Assuming 24-month loan duration
-            loan_duration_months = 24
-            total_salary_over_duration = monthly_salary * loan_duration_months
-            required_salary = amount * 2
-            
-            logger.info(f"Salary Check: Total over {loan_duration_months} months = ₹{total_salary_over_duration}, Required (2x loan) = ₹{required_salary}")
-            
-            if total_salary_over_duration < required_salary:
-                return {
-                    "status": "REJECTED",
-                    "reason": f"Total salary over {loan_duration_months} months (₹{total_salary_over_duration:,}) is less than 2x the loan amount (₹{required_salary:,})",
-                    "monthly_salary": monthly_salary,
-                    "loan_duration_months": loan_duration_months,
-                    "total_salary": total_salary_over_duration,
-                    "required_amount": required_salary,
-                    "max_loan_amount": int(total_salary_over_duration / 2),
-                    "suggestion": f"Maximum eligible loan based on your salary: ₹{int(total_salary_over_duration / 2):,}"
-                }
-            
-            # Calculate EMI (simple estimation: amount/24 months * 1.1 for interest)
-            estimated_emi = (amount / loan_duration_months) * 1.1
-            max_allowed_emi = 0.5 * monthly_salary
-            
-            logger.info(f"EMI Check: Estimated={estimated_emi}, Max Allowed={max_allowed_emi}")
-            
-            if estimated_emi <= max_allowed_emi:
-                return {
-                    "status": "APPROVED",
-                    "amount": amount,
-                    "interest_rate": 12.0,
-                    "credit_score": credit_score,
-                    "monthly_emi": round(estimated_emi, 2),
-                    "monthly_salary": monthly_salary,
-                    "loan_duration_months": loan_duration_months,
-                    "reason": "Salary verification successful - Meets 2x loan requirement and EMI within affordability"
-                }
-            else:
-                return {
-                    "status": "REJECTED",
-                    "reason": f"EMI (₹{round(estimated_emi, 2)}) exceeds 50% of salary (₹{monthly_salary})",
-                    "estimated_emi": round(estimated_emi, 2),
-                    "monthly_salary": monthly_salary,
-                    "max_loan_amount": int(max_allowed_emi * loan_duration_months / 1.1),
-                    "suggestion": f"Maximum eligible amount based on EMI: ₹{int(max_allowed_emi * loan_duration_months / 1.1):,}"
+                    "credit_score": credit_score
                 }
         
-        # Rule 4: Amount exceeds 2x pre-approved limit
-        return {
-            "status": "REJECTED",
-            "reason": f"Requested amount (₹{amount}) exceeds maximum eligible amount of ₹{2 * pre_approved_limit}",
-            "credit_score": credit_score,
-            "pre_approved_limit": pre_approved_limit,
-            "max_eligible": 2 * pre_approved_limit,
-            "suggestion": f"Please apply for an amount up to ₹{2 * pre_approved_limit}"
-        }
+        # USER REQUIREMENT: Salary during loan duration should be at least 2x the loan amount
+        # Assuming 24-month loan duration
+        loan_duration_months = 24
+        total_salary_over_duration = monthly_salary * loan_duration_months
+        required_salary = amount * 2
+        
+        logger.info(f"Salary Check: Total over {loan_duration_months} months = ₹{total_salary_over_duration}, Required (2x loan) = ₹{required_salary}")
+        
+        if total_salary_over_duration < required_salary:
+            return {
+                "status": "REJECTED",
+                "reason": f"Total salary over {loan_duration_months} months (₹{total_salary_over_duration:,}) is less than 2x the loan amount (₹{required_salary:,})",
+                "monthly_salary": monthly_salary,
+                "loan_duration_months": loan_duration_months,
+                "total_salary": total_salary_over_duration,
+                "required_amount": required_salary,
+                "max_loan_amount": int(total_salary_over_duration / 2),
+                "suggestion": f"Maximum eligible loan based on your salary: ₹{int(total_salary_over_duration / 2):,}"
+            }
+        
+        # Calculate EMI (simple estimation: amount/24 months * 1.1 for interest)
+        estimated_emi = (amount / loan_duration_months) * 1.1
+        max_allowed_emi = 0.5 * monthly_salary
+        
+        logger.info(f"EMI Check: Estimated={estimated_emi}, Max Allowed={max_allowed_emi}")
+        
+        if estimated_emi <= max_allowed_emi:
+            # APPROVED based on salary validation
+            interest_rate = 10.5 if pre_approved_limit else 12.0  # Slightly higher rate if pre-approved limit not available
+            return {
+                "status": "APPROVED",
+                "amount": amount,
+                "interest_rate": interest_rate,
+                "credit_score": credit_score,
+                "monthly_emi": round(estimated_emi, 2),
+                "monthly_salary": monthly_salary,
+                "loan_duration_months": loan_duration_months,
+                "pre_approved_limit": pre_approved_limit,
+                "reason": "Salary verification successful - Meets 2x loan requirement and EMI within affordability"
+            }
+        else:
+            return {
+                "status": "REJECTED",
+                "reason": f"EMI (₹{round(estimated_emi, 2)}) exceeds 50% of salary (₹{monthly_salary})",
+                "estimated_emi": round(estimated_emi, 2),
+                "monthly_salary": monthly_salary,
+                "max_loan_amount": int(max_allowed_emi * loan_duration_months / 1.1),
+                "suggestion": f"Maximum eligible amount based on EMI: ₹{int(max_allowed_emi * loan_duration_months / 1.1):,}"
+            }
         
     except Exception as e:
         logger.error(f"Unexpected error in underwriting: {str(e)}")
