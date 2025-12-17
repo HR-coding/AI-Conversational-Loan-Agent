@@ -1,6 +1,5 @@
 // Determine API URL dynamically based on environment
-const API_BASE = window.location.origin; // Auto-detects production or localhost
-const API_URL = `${API_BASE}/chat`;
+const API_URL = "https://nexus-ai-loan-agent.onrender.com/chat";;
 
 let attachedFile = null;
 
