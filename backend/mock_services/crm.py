@@ -24,9 +24,9 @@ def verify():
     if user:
         return jsonify({
             "status": "verified",
+            "message": "KYC verification complete",
             "name": user['name'],
-            "address": user['address'],
-            "phone": user['phone']
+            "pan": pan
         }), 200
     return jsonify({"status": "failed", "reason": "PAN not found in CRM"}), 404
 
